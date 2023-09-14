@@ -11,6 +11,8 @@ from flax.training.train_state import TrainState
 from distrax import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
+from utils import parse_args
+
 class Policy(nn.Module):
     action_space: int
 
@@ -22,9 +24,7 @@ class Policy(nn.Module):
         return x
 
 # --- PARAMS ---
-gamma = 0.99
-seed = 777
-env_id = "CartPole-v1"
+args = parse_args()
 num_episodes = 2_000
 timesteps = 1000
 algo_name = "REINFORCE"
@@ -33,15 +33,15 @@ algo_name = "REINFORCE"
 writer = SummaryWriter(f"runs/{algo_name}_{time.time()}")
 
 # --- RNG HANDLE ---
-rng = random.PRNGKey(seed)
+rng = random.PRNGKey(args.seed)
 key, _ = random.split(rng, 2)
-np.random.seed(seed)
+np.random.seed(args.seed)
 
 # --- ENV HANDLE ---
-env = gym.make(env_id)
+env = gym.make(args.env_id)
 env = gym.wrappers.RecordEpisodeStatistics(env)
 
-s, _ = env.reset(seed=seed)
+s, _ = env.reset(seed=args.seed)
 
 agent = Policy(env.action_space.n)
 agent_state = TrainState.create(
@@ -108,7 +108,7 @@ for episode in range(num_episodes):
     actions = jnp.asarray(actions)
     rewards = jnp.asarray(rewards)
 
-    returns = calculate_returns(rewards, gamma)
+    returns = calculate_returns(rewards, args.gamma)
     loss_value, entropy, agent_state = update(agent_state, observations, actions, returns)
     writer.add_scalar("healthcheck/loss_value", loss_value.item(), global_step)
     writer.add_scalar("healthcheck/policy_entropy", entropy.item(), global_step)

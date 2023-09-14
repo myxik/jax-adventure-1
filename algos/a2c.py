@@ -1,4 +1,5 @@
 import jax
+import sys
 import time
 import flax
 import optax
@@ -12,6 +13,8 @@ from flax import linen as nn
 from flax.training.train_state import TrainState
 from distrax import Categorical
 from torch.utils.tensorboard import SummaryWriter
+
+from utils import parse_args
 
 class Network(nn.Module):
     @nn.compact
@@ -41,10 +44,7 @@ class AgentParams:
     critic_params: flax.core.FrozenDict
 
 # --- PARAMS ---
-gamma = 0.99
-seed = 777
-env_id = "CartPole-v1"
-global_steps = 1_000_000
+args = parse_args()
 update_every = 5
 algo_name = "A2C"
 
@@ -52,15 +52,15 @@ algo_name = "A2C"
 writer = SummaryWriter(f"runs/{algo_name}_{time.time()}")
 
 # --- RNG HANDLE ---
-rng = random.PRNGKey(seed)
+rng = random.PRNGKey(args.seed)
 key, _ = random.split(rng, 2)
-np.random.seed(seed)
+np.random.seed(args.seed)
 
 # --- ENV HANDLE ---
-env = gym.make(env_id, autoreset=True)
+env = gym.make(args.env_id, autoreset=True)
 env = gym.wrappers.RecordEpisodeStatistics(env)
 
-s, _ = env.reset(seed=seed)
+s, _ = env.reset(seed=args.seed)
 
 # --- DEFINING AGENTS/NETWORKS ---
 backbone = Network()
@@ -78,7 +78,7 @@ agent_state = TrainState.create(
     tx=optax.sgd(learning_rate=3e-4),
 )
 
-@jax.jit
+# @jax.jit
 def update(agent_state, observations, actions, returns):
     def reinforce(params):
         embed = backbone.apply(params.backbone_params, observations)
@@ -89,10 +89,10 @@ def update(agent_state, observations, actions, returns):
 
         entropy = jnp.mean(jnp.sum(-probs * logprobs, axis=1))
 
-        logprobs = jnp.take_along_axis(logprobs, actions[:, None], axis=-1)  # log(p(a | s))
+        logprobs = jnp.take_along_axis(logprobs, actions[:, None], axis=-1)
 
         values = jax.lax.stop_gradient(critic.apply(params.critic_params, embed))
-        scale = returns - values.squeeze(1)  # Calculate advantage
+        scale = returns - values.squeeze(1)
 
         scaled_logprobs = -logprobs.squeeze(1) * scale
         return jnp.sum(scaled_logprobs, axis=0), entropy
@@ -119,10 +119,10 @@ backbone.apply = jax.jit(backbone.apply)
 actor.apply = jax.jit(actor.apply)
 critic.apply = jax.jit(critic.apply)
 
-s, _ = env.reset(seed=seed)
+s, _ = env.reset(seed=args.seed)
 buffer = deque(maxlen=update_every)
 
-for global_step in range(global_steps):
+for global_step in range(args.global_steps):
     key, _ = random.split(key, 2)
 
     # act according to policy
@@ -147,7 +147,7 @@ for global_step in range(global_steps):
         else:
             rew[-1] = critic.apply(agent_state.params.critic_params, backbone.apply(agent_state.params.backbone_params, obs[-1]))
 
-        returns = calculate_returns(rew, gamma=gamma)
+        returns = calculate_returns(rew, gamma=args.gamma)
         actor_loss, critic_loss, entropy, agent_state = update(agent_state, obs, act, returns)
 
         writer.add_scalar("healthcheck/actor_loss", actor_loss.item(), global_step)
