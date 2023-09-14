@@ -1,8 +1,8 @@
 import jax
-import sys
 import time
 import flax
 import optax
+import orbax
 import numpy as np
 import jax.numpy as jnp
 import gymnasium as gym
@@ -11,6 +11,7 @@ from collections import deque
 from jax import random
 from flax import linen as nn
 from flax.training.train_state import TrainState
+from flax.training import orbax_utils
 from distrax import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
@@ -47,9 +48,10 @@ class AgentParams:
 args = parse_args()
 update_every = 5
 algo_name = "A2C"
+run_name = f"{algo_name}_{time.time()}"
 
 # --- LOGGER ---
-writer = SummaryWriter(f"runs/{algo_name}_{time.time()}")
+writer = SummaryWriter(f"runs/{run_name}")
 
 # --- RNG HANDLE ---
 rng = random.PRNGKey(args.seed)
@@ -153,3 +155,10 @@ for global_step in range(args.global_steps):
         writer.add_scalar("healthcheck/actor_loss", actor_loss.item(), global_step)
         writer.add_scalar("healthcheck/critic_loss", critic_loss.item(), global_step)
         writer.add_scalar("healthcheck/policy_entropy", entropy.item(), global_step)
+    
+# --- CHECKPOINT ---
+ckpt = {"model": agent_state, "data": [s]}
+
+orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+save_args = orbax_utils.save_args_from_target(ckpt)
+orbax_checkpointer.save(f"checkpoints/{run_name}", ckpt, save_args=save_args)

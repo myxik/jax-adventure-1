@@ -1,10 +1,12 @@
 import jax
 import time
 import optax
+import orbax
 import numpy as np
 import jax.numpy as jnp
 import gymnasium as gym
 
+from flax.training import orbax_utils
 from jax import random
 from flax import linen as nn
 from flax.training.train_state import TrainState
@@ -25,12 +27,13 @@ class Policy(nn.Module):
 
 # --- PARAMS ---
 args = parse_args()
-num_episodes = 2_000
+num_episodes = 10
 timesteps = 1000
 algo_name = "REINFORCE"
+run_name = f"{algo_name}_{time.time()}"
 
 # --- LOGGER ---
-writer = SummaryWriter(f"runs/{algo_name}_{time.time()}")
+writer = SummaryWriter(f"runs/{run_name}")
 
 # --- RNG HANDLE ---
 rng = random.PRNGKey(args.seed)
@@ -112,3 +115,10 @@ for episode in range(num_episodes):
     loss_value, entropy, agent_state = update(agent_state, observations, actions, returns)
     writer.add_scalar("healthcheck/loss_value", loss_value.item(), global_step)
     writer.add_scalar("healthcheck/policy_entropy", entropy.item(), global_step)
+
+# --- SAVE CHECKPOINT ---
+ckpt = {"model": agent_state, "data": [s]}
+
+orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+save_args = orbax_utils.save_args_from_target(ckpt)
+orbax_checkpointer.save(f"checkpoints/{run_name}", ckpt, save_args=save_args)
