@@ -12,4 +12,6 @@ def parse_args():
                         default=1_000_000, type=int, required=False)
     parser.add_argument("-g", "--gamma", help="Discount for return",
                         default=0.99, type=float, required=False)
+    parser.add_argument("-n", "--num_envs", help="Number of parallel environments",
+                        default=2, type=int, required=False)
     return parser.parse_args()
