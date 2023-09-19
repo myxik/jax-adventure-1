@@ -14,4 +14,9 @@ def parse_args():
                         default=0.99, type=float, required=False)
     parser.add_argument("-n", "--num_envs", help="Number of parallel environments",
                         default=2, type=int, required=False)
+    parser.add_argument("--track", action="store_true", help="Whether to track wandb")
+    parser.add_argument("--project_name", help="Name of the project on wandb",
+                        default="JimmyRL", type=str, required=False)
+    parser.add_argument("--entity", help="Wandb entity",
+                        default="myxik", type=str, required=False)
     return parser.parse_args()
