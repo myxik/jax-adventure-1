@@ -9,8 +9,7 @@ import numpy as np
 import jax.numpy as jnp
 import gymnasium as gym
 
-from numba import njit
-
+from tqdm.auto import tqdm
 from einops import rearrange
 from jax import random
 from flax import linen as nn
@@ -18,19 +17,12 @@ from flax.training.train_state import TrainState
 from flax.training import orbax_utils
 from distrax import Categorical
 from torch.utils.tensorboard import SummaryWriter
-from stable_baselines3.common.atari_wrappers import (
-    ClipRewardEnv,
-    EpisodicLifeEnv,
-    FireResetEnv,
-    MaxAndSkipEnv,
-    NoopResetEnv,
-)
 
 from utils import parse_args, RolloutBuffer
 
 
 # To enable parallelism for CPU
-os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=true" 
+os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=true xla_force_host_platform_device_count=96"
 
 
 class Numpyzi(gym.ObservationWrapper):
@@ -41,13 +33,14 @@ class Network(nn.Module):
     @nn.compact
     def __call__(self, x):
         x = x / 255.
+        bs = x.shape[0]
         x = nn.Conv(32, kernel_size=(8, 8), strides=4)(x)
         x = nn.relu(x)
         x = nn.Conv(64, kernel_size=(4, 4), strides=2)(x)
         x = nn.relu(x)
         x = nn.Conv(64, kernel_size=(3, 3), strides=1)(x)
         x = nn.relu(x)
-        x = rearrange(x, "b c h w -> b (c h w)")
+        x = jnp.reshape(x, (bs, -1))
         x = nn.Dense(512)(x)
         x = nn.relu(x)
         return x
@@ -81,16 +74,8 @@ def make_env(env_id, seed, idx):
     def fn():
         env = gym.make(env_id)
         env = gym.wrappers.RecordEpisodeStatistics(env)
-        env = NoopResetEnv(env, noop_max=30)
-        env = MaxAndSkipEnv(env, skip=4)
-        env = EpisodicLifeEnv(env)
-        if "FIRE" in env.unwrapped.get_action_meanings():
-            env = FireResetEnv(env)
-        env = ClipRewardEnv(env)
-        env = gym.wrappers.ResizeObservation(env, (84, 84))
-        env = gym.wrappers.GrayScaleObservation(env)
+        env = gym.wrappers.AtariPreprocessing(env)
         env = gym.wrappers.FrameStack(env, 4)
-        env = Numpyzi(env)
 
         env.action_space.seed(seed)
         return env
@@ -180,11 +165,12 @@ critic.apply = jax.jit(critic.apply)
 
 rollouts = RolloutBuffer(update_every)
 
-for global_step in range(args.global_steps):
+for global_step in tqdm(range(args.global_steps)):
     for step in range(update_every):
         key, _ = random.split(key, 2)  # handle new random
 
         # act according to policy
+        s = jnp.asarray(s)
         logits = actor.apply(agent_state.params.actor_params, backbone.apply(agent_state.params.backbone_params, s))
         dist = Categorical(logits=logits)
         a = dist.sample(seed=key)
