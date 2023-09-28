@@ -25,10 +25,6 @@ from utils import parse_args, RolloutBuffer, InfosBuffer
 os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=true xla_force_host_platform_device_count=96"
 
 
-class Numpyzi(gym.ObservationWrapper):
-    def observation(self, observation):
-        return np.asarray(observation)
-
 class Network(nn.Module):
     @nn.compact
     def __call__(self, x):
@@ -199,8 +195,9 @@ for global_step in tqdm(range(args.global_steps)):
     # TODO: test it all out
     if (global_step % log_freq) == (log_freq - 1):
         r, l = info_buffer.get()
-        writer.add_scalar("metrics/episodic_return", r, global_step)
-        writer.add_scalar("metrics/episodic_length", l, global_step)
+        if l != 0:
+            writer.add_scalar("metrics/episodic_return", r, global_step)
+            writer.add_scalar("metrics/episodic_length", l, global_step)
 
         writer.add_scalar("healthcheck/actor_loss", running_actor_loss / log_freq, global_step)
         writer.add_scalar("healthcheck/critic_loss", running_critic_loss / log_freq, global_step)
