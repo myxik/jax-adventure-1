@@ -82,6 +82,7 @@ update_every = 5
 algo_name = f"A2C-Atari-{args.env_id}"
 run_name = f"{algo_name}_{time.time()}"
 log_freq = 100
+global_steps = int(args.global_steps / (5 * args.num_envs))  # Balance number of steps
 
 # --- LOGGER ---
 if args.track:
@@ -160,11 +161,10 @@ actor.apply = jax.jit(actor.apply)
 critic.apply = jax.jit(critic.apply)
 
 rollouts = RolloutBuffer(update_every)
-info_buffer = InfosBuffer()
 
 running_actor_loss, running_critic_loss, running_entropy = 0., 0., 0.
 
-for global_step in tqdm(range(args.global_steps)):
+for global_step in tqdm(range(global_steps)):
     for step in range(update_every):
         key, _ = random.split(key, 2)  # handle new random
 
@@ -177,9 +177,17 @@ for global_step in tqdm(range(args.global_steps)):
         s_new, r, term, trun, infos = env.step(a)
 
         rollouts.push((s, a, r, term))
-        info_buffer.push(infos)
 
         s = s_new
+
+        # Gracefully stolen from CleanRL
+        if "final_info" in infos:
+            for info in infos["final_info"]:
+                # Skip the envs that are not done
+                if "episode" not in info:
+                    continue
+                writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
     # Calculate last value
     last_value = critic.apply(agent_state.params.critic_params, backbone.apply(agent_state.params.backbone_params, s_new))
@@ -191,13 +199,7 @@ for global_step in tqdm(range(args.global_steps)):
     running_critic_loss += critic_loss.item()
     running_entropy += entropy.item()
 
-    # TODO: test it all out
     if (global_step % log_freq) == (log_freq - 1):
-        r, l = info_buffer.get()
-        if l != 0:
-            writer.add_scalar("metrics/episodic_return", r, global_step)
-            writer.add_scalar("metrics/episodic_length", l, global_step)
-
         writer.add_scalar("healthcheck/actor_loss", running_actor_loss / log_freq, global_step)
         writer.add_scalar("healthcheck/critic_loss", running_critic_loss / log_freq, global_step)
         writer.add_scalar("healthcheck/policy_entropy", running_entropy / log_freq, global_step)
