@@ -10,7 +10,6 @@ import jax.numpy as jnp
 import gymnasium as gym
 
 from tqdm.auto import tqdm
-from einops import rearrange
 from jax import random
 from flax import linen as nn
 from flax.training.train_state import TrainState
