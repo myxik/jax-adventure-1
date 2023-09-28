@@ -36,7 +36,7 @@ def calculate_returns(last_value, rewards, dones, gamma):
     return returns
 
 
-class RolloutBuffer:
+class RolloutBuffer:  # TODO: rewrite it in jax
     def __init__(self, length):
         self. deque = deque(maxlen=length)
 
@@ -55,3 +55,27 @@ class RolloutBuffer:
         returns = rearrange(returns, "b n_envs -> (b n_envs) 1")
 
         return obs, act, jnp.asarray(returns)
+    
+
+class InfosBuffer:  # TODO: rewrite it in numpy 
+    def __init__(self):
+        self.rs = []
+        self.ls = []
+
+    def push(self, infos):
+        if "final_info" in infos:
+            for info in infos["final_info"]:
+                # Skip the envs that are not done
+                if not info:
+                    continue
+                self.rs.append(info["episode"]["r"])
+                self.ls.append(info["episode"]["l"])
+
+    def get(self):
+        if len(self.rs) == 0:
+            return 0., 0.
+        r = sum(self.rs) / len(self.rs)
+        l = sum(self.ls) / len(self.ls)
+        self.rs = []
+        self.ls = []
+        return r, l
