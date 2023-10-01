@@ -121,7 +121,7 @@ agent_state = TrainState.create(
         critic.init(key, backbone.apply(backbone_params, s)),
     ),
     tx=optax.chain(
-        optax.clip(.1),
+        optax.clip(.5),
         optax.rmsprop(learning_rate=7e-4, initial_scale=1.),
     )
 )
@@ -184,7 +184,7 @@ for global_step in tqdm(range(global_steps)):
         if "final_info" in infos:
             for info in infos["final_info"]:
                 # Skip the envs that are not done
-                if "episode" not in info:
+                if not info:
                     continue
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)

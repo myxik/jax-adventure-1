@@ -29,7 +29,8 @@ def parse_args():
 
 def calculate_returns(last_value, rewards, dones, gamma):
     returns = np.zeros(rewards.shape)
-    returns[-1] = last_value.squeeze()
+    returns[-1] = np.where(dones[-1], 0, last_value.squeeze())
+    # returns[-1] = last_value.squeeze()
     for j in range(returns.shape[1]):  # for each env
         for i in reversed(range(returns.shape[0] - 1)):
             returns[i][j] = rewards[i][j] + gamma * (1 - dones[i][j]) * returns[i+1][j]
