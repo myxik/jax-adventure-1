@@ -36,8 +36,6 @@ class Network(nn.Module):
         x = nn.Conv(64, kernel_size=(3, 3), strides=1)(x)
         x = nn.relu(x)
         x = jnp.reshape(x, (bs, -1))
-        x = nn.Dense(512)(x)
-        x = nn.relu(x)
         return x
     
 class Actor(nn.Module):
@@ -122,7 +120,7 @@ agent_state = TrainState.create(
     ),
     tx=optax.chain(
         optax.clip(.5),
-        optax.rmsprop(learning_rate=7e-4, initial_scale=1.),
+        optax.rmsprop(learning_rate=7e-4, initial_scale=1., decay=0.99),
     )
 )
 
