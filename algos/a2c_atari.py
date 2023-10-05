@@ -79,8 +79,7 @@ args = parse_args()
 update_every = 5
 algo_name = f"A2C-Atari-{args.env_id}"
 run_name = f"{algo_name}_{time.time()}"
-log_freq = 100
-global_steps = int(args.global_steps / (5 * args.num_envs))  # Balance number of steps
+global_steps = int(args.global_steps / (update_every * args.num_envs))  # Balance number of steps
 
 # --- LOGGER ---
 if args.track:
@@ -160,8 +159,6 @@ critic.apply = jax.jit(critic.apply)
 
 rollouts = RolloutBuffer(update_every)
 
-running_actor_loss, running_critic_loss, running_entropy = 0., 0., 0.
-
 for global_step in tqdm(range(global_steps)):
     for step in range(update_every):
         key, _ = random.split(key, 2)  # handle new random
@@ -193,16 +190,10 @@ for global_step in tqdm(range(global_steps)):
     obs, act, returns = rollouts.sample(last_value, args.gamma)
 
     actor_loss, critic_loss, entropy, agent_state = update(agent_state, obs, act, returns)
-    running_actor_loss += actor_loss.item()
-    running_critic_loss += critic_loss.item()
-    running_entropy += entropy.item()
 
-    if (global_step % log_freq) == (log_freq - 1):
-        writer.add_scalar("healthcheck/actor_loss", running_actor_loss / log_freq, global_step)
-        writer.add_scalar("healthcheck/critic_loss", running_critic_loss / log_freq, global_step)
-        writer.add_scalar("healthcheck/policy_entropy", running_entropy / log_freq, global_step)
-
-        running_actor_loss, running_critic_loss, running_entropy = 0., 0., 0.
+    writer.add_scalar("healthcheck/actor_loss", actor_loss, global_step)
+    writer.add_scalar("healthcheck/critic_loss", critic_loss, global_step)
+    writer.add_scalar("healthcheck/policy_entropy", entropy, global_step)
     
 # --- CHECKPOINT ---
 ckpt = {"model": agent_state, "data": [s]}
