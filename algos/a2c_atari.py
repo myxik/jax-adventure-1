@@ -8,6 +8,7 @@ import wandb
 import numpy as np
 import jax.numpy as jnp
 import gymnasium as gym
+import lovely_jax as lj
 
 from tqdm.auto import tqdm
 from jax import random
@@ -22,6 +23,7 @@ from utils import parse_args, RolloutBuffer, InfosBuffer
 
 # To enable parallelism for CPU
 os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=true xla_force_host_platform_device_count=96"
+lj.monkey_patch()
 
 
 class Network(nn.Module):
@@ -79,7 +81,8 @@ args = parse_args()
 update_every = 5
 algo_name = f"A2C-Atari-{args.env_id}"
 run_name = f"{algo_name}_{time.time()}"
-global_steps = int(args.global_steps / (update_every * args.num_envs))  # Balance number of steps
+# global_steps = int(args.global_steps / (update_every * args.num_envs))  # Balance number of steps
+global_steps = int(args.global_steps)
 
 # --- LOGGER ---
 if args.track:
@@ -142,9 +145,9 @@ def update(agent_state, observations, actions, returns):
         scaled_logprobs = -logprobs * scale  # actor loss
         actor_loss = jnp.mean(scaled_logprobs, axis=0).squeeze(0)
         
-        critic_loss = jnp.mean((returns - values.squeeze(1)) ** 2)  # critic loss
+        critic_loss = jnp.mean((returns - values) ** 2)  # critic loss
 
-        loss = actor_loss + 0.5 * critic_loss
+        loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy
         return loss, (actor_loss, critic_loss, entropy)
     
     (general_loss, aux), grads = jax.value_and_grad(reinforce, has_aux=True)(agent_state.params)
@@ -183,6 +186,8 @@ for global_step in tqdm(range(global_steps)):
                     continue
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+    
+    global_step += update_every
 
     # Calculate last value
     last_value = critic.apply(agent_state.params.critic_params, backbone.apply(agent_state.params.backbone_params, s_new))
@@ -191,9 +196,9 @@ for global_step in tqdm(range(global_steps)):
 
     actor_loss, critic_loss, entropy, agent_state = update(agent_state, obs, act, returns)
 
-    writer.add_scalar("healthcheck/actor_loss", actor_loss, global_step)
-    writer.add_scalar("healthcheck/critic_loss", critic_loss, global_step)
-    writer.add_scalar("healthcheck/policy_entropy", entropy, global_step)
+    writer.add_scalar("healthcheck/actor_loss", actor_loss.item(), global_step)
+    writer.add_scalar("healthcheck/critic_loss", critic_loss.item(), global_step)
+    writer.add_scalar("healthcheck/policy_entropy", entropy.item(), global_step)
     
 # --- CHECKPOINT ---
 ckpt = {"model": agent_state, "data": [s]}
