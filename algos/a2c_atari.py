@@ -18,7 +18,7 @@ from flax.training import orbax_utils
 from distrax import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
-from utils import parse_args, RolloutBuffer, InfosBuffer
+from utils import parse_args, RolloutBuffer
 
 
 # To enable parallelism for CPU
@@ -123,6 +123,7 @@ agent_state = TrainState.create(
     tx=optax.chain(
         optax.clip(.5),
         optax.rmsprop(learning_rate=7e-4, initial_scale=1., decay=0.99),
+        # optax.adam(learning_rate=1e-2)
     )
 )
 
@@ -140,14 +141,14 @@ def update(agent_state, observations, actions, returns):
         logprobs = jnp.take_along_axis(logprobs, actions, axis=-1)
 
         values = critic.apply(params.critic_params, embed)
-        scale = jax.lax.stop_gradient(returns - values)
+        advantage = returns - values
 
-        scaled_logprobs = -logprobs * scale  # actor loss
+        scaled_logprobs = -logprobs * jax.lax.stop_gradient(advantage)  # actor loss
         actor_loss = jnp.mean(scaled_logprobs, axis=0).squeeze(0)
         
-        critic_loss = jnp.mean((returns - values) ** 2)  # critic loss
+        critic_loss = jnp.mean(advantage ** 2)  # critic loss
 
-        loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy
+        loss = actor_loss + 0.5 * critic_loss - 0.001 * entropy
         return loss, (actor_loss, critic_loss, entropy)
     
     (general_loss, aux), grads = jax.value_and_grad(reinforce, has_aux=True)(agent_state.params)
@@ -171,6 +172,7 @@ for global_step in tqdm(range(global_steps)):
         logits = actor.apply(agent_state.params.actor_params, backbone.apply(agent_state.params.backbone_params, s))
         dist = Categorical(logits=logits)
         a = dist.sample(seed=key)
+        a = np.asarray(a)
 
         s_new, r, term, trun, infos = env.step(a)
 
