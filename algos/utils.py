@@ -27,14 +27,13 @@ def parse_args():
     return parser.parse_args()
 
 
-def calculate_returns(last_value, rewards, dones, gamma):
-    returns = np.zeros(rewards.shape)
-    returns[-1] = np.where(dones[-1], 0, last_value.squeeze())
-    # returns[-1] = last_value.squeeze()
-    for j in range(returns.shape[1]):  # for each env
-        for i in reversed(range(returns.shape[0] - 1)):
-            returns[i][j] = rewards[i][j] + gamma * (1 - dones[i][j]) * returns[i+1][j]
-    return returns
+def compute_returns(next_value, rewards, masks, gamma=0.99):
+    R = rearrange(next_value, "n_envs 1 -> 1 n_envs")
+    returns = []
+    for step in reversed(range(len(rewards))):
+        R = rewards[step] + gamma * R * (1 - masks[step])
+        returns.insert(0, R)
+    return jnp.array(returns)
 
 
 class RolloutBuffer:  # TODO: rewrite it in jax
@@ -49,11 +48,11 @@ class RolloutBuffer:  # TODO: rewrite it in jax
 
     def sample(self, last_value, gamma):
         obs, act, rew, dones = map(jnp.array, zip(*self.deque))
-        returns = calculate_returns(last_value, rew, dones, gamma)
+        returns = compute_returns(last_value, rew, dones, gamma)
 
         obs = rearrange(obs, "b n_envs c h w -> (b n_envs) c h w")
         act = rearrange(act, "b n_envs -> (b n_envs) 1")
-        returns = rearrange(returns, "b n_envs -> (b n_envs) 1")
+        returns = rearrange(returns, "b 1 n_envs -> (b n_envs) 1")
 
         return obs, act, jnp.asarray(returns)
     
