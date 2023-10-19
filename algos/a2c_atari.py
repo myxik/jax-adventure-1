@@ -81,8 +81,7 @@ args = parse_args()
 update_every = 5
 algo_name = f"A2C-Atari-{args.env_id}"
 run_name = f"{algo_name}_{time.time()}"
-# global_steps = int(args.global_steps / (update_every * args.num_envs))  # Balance number of steps
-global_steps = int(args.global_steps)
+global_steps = int(args.global_steps / (update_every * args.num_envs))  # Balance number of steps
 
 # --- LOGGER ---
 if args.track:
